@@ -35,12 +35,17 @@
     }
     button:hover{ border-color:#34527a; }
     .small { font-size: 12px; opacity: .85; }
+    
+    /* Legend colors */
+    .color-box { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; }
+    .bg-tan { background: #ffd36e; }
+    .bg-sec { background: #34d399; }
   </style>
 </head>
 <body>
 <header>
   <h1>Dynamic Math: Tangent & Derivative Explorer</h1>
-  <p>Pick a function, move <span class="mono">x₀</span>, and watch the tangent line + derivative update in real time.</p>
+  <p>Pick a function, move <span class="mono">x₀</span> and <span class="mono">h</span> to visualize the difference between exact and numerical derivatives.</p>
 </header>
 
 <main>
@@ -70,31 +75,27 @@
 
     <div style="height:10px;"></div>
 
-    <label for="h">Step h (for numerical derivative)</label>
-    <input id="h" type="range" min="0.0001" max="1" step="0.0001" />
+    <label for="h">Step h (Secant width)</label>
+    <input id="h" type="range" min="0.01" max="2.0" step="0.01" />
     <div class="row small">
       <span class="mono" id="hval"></span>
-      <span class="hint">Smaller h → better (until floating-point bites)</span>
+      <span class="hint">Large h = bad approx</span>
     </div>
 
     <div style="height:12px;"></div>
 
     <div class="grid">
       <div class="stat">
-        <div class="small">f(x₀)</div>
-        <div class="mono" id="fx0">—</div>
-      </div>
-      <div class="stat">
-        <div class="small">Tangent slope f′(x₀)</div>
+        <div class="small"><span class="color-box bg-tan"></span>Tangent (Exact)</div>
         <div class="mono" id="slope">—</div>
       </div>
       <div class="stat">
-        <div class="small">Numerical derivative</div>
+        <div class="small"><span class="color-box bg-sec"></span>Secant (Numerical)</div>
         <div class="mono" id="numd">—</div>
       </div>
-      <div class="stat">
-        <div class="small">Tangent line</div>
-        <div class="mono" id="tline">—</div>
+      <div class="stat" style="grid-column: span 2;">
+        <div class="small">Diff (Error)</div>
+        <div class="mono" id="err">—</div>
       </div>
     </div>
 
@@ -107,8 +108,9 @@
 
     <div style="height:12px;"></div>
     <div class="hint">
-      Uses a Canvas plot (no libraries). The numerical derivative is the symmetric difference:
-      <span class="mono">(f(x₀+h) − f(x₀−h)) / (2h)</span>.
+      <strong>Yellow Line:</strong> Exact tangent.<br/>
+      <strong>Green Line:</strong> Secant connecting <span class="mono">x₀-h</span> and <span class="mono">x₀+h</span>.<br/>
+      As <span class="mono">h → 0</span>, the green line converges to the yellow line.
     </div>
   </section>
 
@@ -128,10 +130,10 @@
 
   const x0val = document.getElementById('x0val');
   const hval = document.getElementById('hval');
-  const fx0El = document.getElementById('fx0');
+  
   const slopeEl = document.getElementById('slope');
   const numdEl = document.getElementById('numd');
-  const tlineEl = document.getElementById('tline');
+  const errEl = document.getElementById('err');
 
   const resetBtn = document.getElementById('reset');
   const centerBtn = document.getElementById('center');
@@ -221,7 +223,7 @@
   function drawTangent(x0, fx0, slope){
     // y = slope*(x - x0) + fx0
     ctx.save();
-    ctx.strokeStyle = '#ffd36e';
+    ctx.strokeStyle = '#ffd36e'; // Yellow
     ctx.lineWidth = 2.5;
     ctx.setLineDash([10,8]);
 
@@ -236,7 +238,40 @@
     ctx.restore();
   }
 
-  function drawPoint(x, y){
+  function drawSecant(x1, y1, x2, y2){
+    // Draw the secant line passing through (x1,y1) and (x2,y2)
+    ctx.save();
+    ctx.strokeStyle = '#34d399'; // Green
+    ctx.lineWidth = 2;
+    
+    // Calculate slope
+    const m = (y2 - y1) / (x2 - x1);
+    
+    // Extrapolate to screen bounds
+    const yExt1 = m * (view.xmin - x1) + y1;
+    const yExt2 = m * (view.xmax - x1) + y1;
+
+    ctx.beginPath();
+    ctx.moveTo(worldToScreenX(view.xmin), worldToScreenY(yExt1));
+    ctx.lineTo(worldToScreenX(view.xmax), worldToScreenY(yExt2));
+    ctx.stroke();
+
+    // Draw the two sample points
+    ctx.fillStyle = '#34d399';
+    const drawDot = (px, py) => {
+       const sx = worldToScreenX(px);
+       const sy = worldToScreenY(py);
+       ctx.beginPath();
+       ctx.arc(sx, sy, 4, 0, Math.PI*2);
+       ctx.fill();
+    };
+    drawDot(x1, y1);
+    drawDot(x2, y2);
+    
+    ctx.restore();
+  }
+
+  function drawMainPoint(x, y){
     ctx.save();
     ctx.fillStyle = '#ff6ea8';
     ctx.strokeStyle = '#0b0f14';
@@ -296,15 +331,18 @@
     const fx0 = f(x0v);
     const slope = df(x0v);
 
-    const numd = (f(x0v + hv) - f(x0v - hv)) / (2*hv);
+    // Calculate secant points
+    const xm = x0v - hv;
+    const xp = x0v + hv;
+    const ym = f(xm);
+    const yp = f(xp);
 
-    fx0El.textContent = format(fx0);
+    const numd = (yp - ym) / (xp - xm);
+    const error = Math.abs(numd - slope);
+
     slopeEl.textContent = format(slope);
     numdEl.textContent = format(numd);
-
-    // tangent line y = m x + b
-    const b = fx0 - slope*x0v;
-    tlineEl.textContent = `y = ${format(slope)}·x + ${format(b)}`;
+    errEl.textContent = format(error);
 
     // update y-range for nicer view
     const yr = autoYRange(f);
@@ -315,8 +353,14 @@
     drawFunction(f);
 
     if(isFiniteNumber(fx0) && isFiniteNumber(slope)){
+      // Draw Exact Tangent
       drawTangent(x0v, fx0, slope);
-      drawPoint(x0v, fx0);
+      
+      // Draw Secant (Numerical approximation)
+      drawSecant(xm, ym, xp, yp);
+
+      // Draw Main Point
+      drawMainPoint(x0v, fx0);
     }
 
     // HUD text
@@ -325,13 +369,12 @@
     ctx.globalAlpha = 0.85;
     ctx.font = '16px ui-monospace, Menlo, Consolas, monospace';
     ctx.fillText(`f(x) selected: ${kind}`, 16, 26);
-    ctx.fillText(`x₀=${x0v.toFixed(4)}  f(x₀)=${format(fx0)}  f'(x₀)=${format(slope)}  num≈${format(numd)}`, 16, 48);
     ctx.restore();
   }
 
   // Defaults
   x0.value = "1.2";
-  h.value = "0.02";
+  h.value = "1.0"; // Start with a larger h to make the effect obvious
 
   fnSel.addEventListener('change', refresh);
   x0.addEventListener('input', refresh);
