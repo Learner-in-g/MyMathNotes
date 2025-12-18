@@ -1,3 +1,8 @@
 ﻿site_name: Math Notes
+
 theme:
   name: material
+
+nav:
+  - Home: index.md
+  - Dynamic Math: dynamic_math.html
